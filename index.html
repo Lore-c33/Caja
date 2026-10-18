@@ -176,6 +176,10 @@ video{width:100%;border-radius:12px;background:#000;max-height:50vh}
 .warnbar{background:var(--warn-soft);border-radius:10px;padding:10px 12px;font-size:.95rem;margin-bottom:12px;display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap}
 .ticket pre{margin:0;font:inherit;white-space:pre}
 #printArea{display:none}
+#quoteBtn{width:100%}
+.qmeta{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.pill.ok{background:var(--accent-soft);color:var(--accent)}
+@media (max-width:820px){.totalbar{gap:8px}.totalbar #quoteBtn{width:auto;flex:none;padding:12px 8px;font-size:.8rem;min-height:56px}.totalbar #quoteBtn .lg{display:none}.totalbar .big{min-width:0;padding:14px 8px;font-size:1.2rem;min-height:56px}.totalbar .total b{font-size:1.6rem}}
 @media print{body>*{display:none!important}body{background:#fff;padding:0}#printArea{display:block!important;font-family:monospace;font-size:9pt;white-space:pre;color:#000;width:48mm;margin:0}}
 </style>
 </head>
@@ -216,6 +220,7 @@ video{width:100%;border-radius:12px;background:#000;max-height:50vh}
     <div class="totalbar">
       <div class="total"><span>Total</span><b class="num" id="total">$0.00</b></div>
       <button class="big" id="payBtn" disabled>Cobrar</button>
+      <button class="btn2" id="quoteBtn" disabled><span class="lg">Hacer </span>presupuesto</button>
       <button class="ghost" id="cancelBtn">Cancelar venta</button>
     </div>
   </section>
@@ -226,6 +231,8 @@ video{width:100%;border-radius:12px;background:#000;max-height:50vh}
     <div class="prodhead"><h2 style="margin:0">Ventas del día</h2><input class="dateIn" type="date" id="salesDate" aria-label="Día"></div>
     <div class="sum num" id="salesSum"></div>
     <div class="results plist" id="salesList"></div>
+    <h2 style="margin-top:22px">Presupuestos</h2>
+    <div class="results plist" id="quoteList"></div>
   </section>
 </main>
 
@@ -251,6 +258,7 @@ video{width:100%;border-radius:12px;background:#000;max-height:50vh}
       <div class="f"><label for="cName">Nombre en el ticket</label><input id="cName" autocomplete="off"></div>
       <div class="f"><label for="cFoot">Mensaje al final del ticket</label><input id="cFoot" autocomplete="off"></div>
       <div class="f"><label for="cPrint">Cómo imprimir</label><select id="cPrint"><option value="rawbt">Impresora Bluetooth con la app RawBT</option><option value="system">Impresión de Android</option><option value="none">No imprimir</option></select></div>
+      <div class="f"><label for="cVig">Días que vale un presupuesto</label><input id="cVig" type="number" inputmode="numeric" min="1" step="1"></div>
       <label class="check"><input type="checkbox" id="cAuto"> Imprimir el ticket solo al confirmar cada venta</label>
       <div class="btns"><button class="btn2" id="cTest">Imprimir ticket de prueba</button></div>
     </fieldset>
@@ -311,6 +319,17 @@ video{width:100%;border-radius:12px;background:#000;max-height:50vh}
     <div class="ticket"><pre id="ticket"></pre></div>
     <div class="row"><button class="btn2" id="tkPrint">Imprimir ticket</button><button class="btn2 dz" id="tkVoid" hidden>Cancelar esta venta</button></div>
     <button class="big" id="newSale">Nueva venta</button>
+  </div>
+</div>
+
+<div class="sheet" id="qtSheet" hidden role="dialog" aria-modal="true" aria-labelledby="qtT">
+  <div class="card">
+    <h3 id="qtT">Presupuesto</h3>
+    <div class="f"><label for="qtName">Para (nombre del cliente, opcional)</label><input id="qtName" autocomplete="off"></div>
+    <div class="ticket"><pre id="qtTicket"></pre></div>
+    <div class="btns"><button class="btn2" id="qtPrint">Imprimir ticket</button><button class="btn2" id="qtSend">Enviar por WhatsApp</button><button class="btn2" id="qtCopy">Copiar texto</button></div>
+    <button class="big" id="qtToSale" hidden>Pasar a venta</button>
+    <div class="row"><button class="ghost" id="qtClose">Cerrar</button><button class="big" id="qtSave">Guardar presupuesto</button></div>
   </div>
 </div>
 
@@ -385,8 +404,8 @@ const DB={db:null,
   putSale(s){if(!DB.db)return;try{DB.db.transaction('sales','readwrite').objectStore('sales').put(s)}catch(e){}},
   replaceSales(list){if(!DB.db)return;try{const st=DB.db.transaction('sales','readwrite').objectStore('sales');st.clear();list.forEach(s=>st.put(s))}catch(e){}}};
 
-const CFG0={name:'JARCERÍA LA PATITA FELIZ',foot:'¡Gracias por su compra!',pin:'1234',print:'rawbt',auto:false,folio:1,lastBackup:null};
-let products=[],sales=[],compras=[],hist=[],cfg={...CFG0},byId={};
+const CFG0={name:'JARCERÍA LA PATITA FELIZ',foot:'¡Gracias por su compra!',pin:'1234',print:'rawbt',auto:false,folio:1,lastBackup:null,qfolio:1,vig:7};
+let products=[],sales=[],compras=[],hist=[],quotes=[],cfg={...CFG0},byId={};
 function fix(p){return {id:String(p.id),cb:String(p.cb||''),n:String(p.n||''),cat:String(p.cat||''),marca:String(p.marca||''),pres:String(p.pres||''),c:+p.c||0,p:+p.p||0,s:Math.trunc(+p.s||0),m:Math.trunc(+p.m||0),a:p.a===0?0:1}}
 function index(){byId={};products.forEach(p=>{p.key=norm([p.n,p.marca,p.id,p.cat,p.cb,p.pres].join(' '));byId[p.id.toLowerCase()]=p})}
 function saveProducts(){index();DB.set('products',products.map(({key,...p})=>p))}
@@ -448,7 +467,7 @@ function drawCart(){
   $('#lines').innerHTML=cart.length?cart.map((l,i)=>`<div class="line" data-id="${esc(l.id)}"><span class="n">${esc(l.n)}</span><span class="imp num">${money(l.p*l.q)}</span>
   <div class="qty"><button aria-label="Quitar uno" data-a="-" data-i="${i}">−</button><span class="q num">${l.q}</span><button aria-label="Agregar uno" data-a="+" data-i="${i}">+</button><span class="each num">× ${money(l.p)}</span><button class="del" data-a="x" data-i="${i}">Quitar</button></div></div>`).join(''):'<p class="empty">Todavía no hay productos.<br>Búsquelos en la lista.</p>';
   const n=cart.reduce((a,l)=>a+l.q,0);$('#nItems').textContent=n?`· ${n} pieza${n>1?'s':''}`:'';
-  $('#total').textContent=money(total());$('#payBtn').disabled=!cart.length}
+  $('#total').textContent=money(total());$('#payBtn').disabled=!cart.length;$('#quoteBtn').disabled=!cart.length}
 $('#lines').onclick=e=>{const b=e.target.closest('button');if(!b)return;const i=+b.dataset.i,l=cart[i];
   if(b.dataset.a==='+')l.q++;else if(b.dataset.a==='-'){l.q--;if(l.q<1)cart.splice(i,1)}else cart.splice(i,1);drawCart()};
 $('#cancelBtn').onclick=()=>{if(cart.length)confirmAsk('¿Cancelar esta venta?','Se quitan todos los productos de la venta actual.','Sí, cancelar',()=>{cart=[];drawCart()})};
@@ -501,11 +520,45 @@ function drawToday(){const t=dkey(new Date()),hoy=sales.filter(s=>!s.cancelada&&
   const need=sales.length>0&&(days===null||days>=7);$('#bkWarn').hidden=!need;
   if(need)$('#bkWarnT').textContent=days===null?'Todavía no se ha guardado ningún respaldo. Entre a Ajustes y respaldo para guardarlo.':`Hace ${days} días que no se guarda un respaldo. Entre a Ajustes y respaldo para guardarlo.`}
 
+/* ---------- Presupuestos ---------- */
+let curQ=null,qSaved=false;
+const qfol=n=>'P-'+String(n).padStart(5,'0');
+function quoteText(q){const L=[],ln='-'.repeat(W);L.push(center(cfg.name),center('PRESUPUESTO'),ln,'Folio: '+q.folio,lr(fdate(q.fecha),ftime(q.fecha)));
+  if(q.cliente)wrap('Para: '+q.cliente,W).forEach(x=>L.push(x));L.push(ln);
+  q.lines.forEach(l=>{const imp=money(l.p*l.q),w=wrap(l.q+' '+l.n,W-imp.length-1);L.push(lr(w[0],imp));w.slice(1).forEach(x=>L.push('  '+x));if(l.q>1)L.push('  '+l.q+' x '+money(l.p))});
+  L.push(ln,lr('TOTAL',money(q.total)),ln,center('Valido hasta el '+fdate(q.vence)),center('Precios sujetos a existencias. No es comprobante de pago.'));return L.join('\n')}
+function drawQuote(){$('#qtTicket').textContent=quoteText(curQ);$('#qtT').textContent=qSaved?'Presupuesto '+curQ.folio:'Presupuesto'}
+function openQuote(q,saved){curQ=q;qSaved=saved;$('#qtName').value=q.cliente||'';$('#qtToSale').hidden=!saved;$('#qtSave').hidden=saved;
+  $('#qtClose').textContent=saved?'Cerrar':'Regresar';drawQuote();open('#qtSheet')}
+function storeQuotes(){quotes=quotes.slice(0,300);DB.set('quotes',quotes)}
+function saveQuote(){if(!qSaved){while(quotes.some(x=>x.folio===qfol(cfg.qfolio)))cfg.qfolio++;curQ.folio=qfol(cfg.qfolio);cfg.qfolio++;saveCfg();quotes.unshift(curQ);qSaved=true}storeQuotes();drawQuote()}
+$('#quoteBtn').onclick=()=>{if(!cart.length)return;const now=new Date();
+  openQuote({folio:qfol(cfg.qfolio),fecha:now.toISOString(),vence:new Date(now.getTime()+(+cfg.vig||7)*864e5).toISOString(),cliente:'',lines:cart.map(l=>({...l})),total:total()},false)};
+$('#qtName').oninput=()=>{curQ.cliente=$('#qtName').value.trim();drawQuote();if(qSaved)storeQuotes()};
+function afterSave(msg){toast(msg);if(!$('#qtToSale').hidden)return;cart=[];drawCart();$('#qtToSale').hidden=false;$('#qtSave').hidden=true;$('#qtClose').textContent='Cerrar';drawQuotes()}
+$('#qtSave').onclick=()=>{saveQuote();afterSave('Presupuesto '+curQ.folio+' guardado');close('#qtSheet')};
+$('#qtPrint').onclick=()=>{const was=qSaved;saveQuote();if(!was)afterSave('Presupuesto '+curQ.folio+' guardado');printText(quoteText(curQ))};
+$('#qtSend').onclick=async()=>{const was=qSaved;saveQuote();if(!was)afterSave('Presupuesto '+curQ.folio+' guardado');
+  const t='```\n'+quoteText(curQ)+'\n```';
+  if(PREVIEW)return toast('El envío funciona en la app instalada.');
+  if(navigator.share){try{await navigator.share({text:t});return}catch(e){if(e&&e.name==='AbortError')return}}
+  location.href='https://wa.me/?text='+encodeURIComponent(t)};
+$('#qtCopy').onclick=()=>{const t=quoteText(curQ);const ok=()=>toast('Texto copiado');
+  if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(t).then(ok).catch(()=>toast('No se pudo copiar'));else toast('No se pudo copiar')};
+$('#qtClose').onclick=()=>close('#qtSheet');
+$('#qtToSale').onclick=()=>{const q=curQ,go=()=>{const miss=[];cart=[];
+    q.lines.forEach(l=>{const p=byId[l.id.toLowerCase()];if(!p||!p.a){miss.push(l.n);return}cart.push({id:p.id,n:p.n,p:l.p,c:p.c,q:l.q})});
+    close('#qtSheet');showTab('sell');toast(miss.length?'No se agregó: '+miss.join(', '):'Presupuesto '+q.folio+' listo para cobrar')};
+  if(cart.length)confirmAsk('¿Reemplazar la venta actual?','Ya hay productos en la venta. Se quitan y se ponen los del presupuesto.','Sí, reemplazar',go);else go()};
+function drawQuotes(){const now=Date.now();
+  $('#quoteList').innerHTML=quotes.length?quotes.slice(0,40).map(q=>`<button class="sale" data-q="${q.folio}"><span class="qmeta"><b>${q.folio}</b> · ${fdate(q.fecha)}${q.cliente?' · '+esc(q.cliente):''} ${new Date(q.vence).getTime()<now?'<span class="pill out">vencido</span>':'<span class="pill ok">vigente</span>'}</span><span class="t num">${money(q.total)}</span><span class="d">${esc(q.lines.map(l=>l.q+' '+l.n).join(', '))}</span></button>`).join(''):'<p class="empty">No hay presupuestos guardados. Se hacen desde Vender con el botón “Hacer presupuesto”.</p>'}
+$('#quoteList').onclick=e=>{const b=e.target.closest('.sale');if(!b)return;const q=quotes.find(x=>x.folio===b.dataset.q);if(q)openQuote(q,true)};
+
 /* ---------- Ventas del día ---------- */
 function drawSales(){if(!$('#salesDate').value)$('#salesDate').value=dkey(new Date());const d=$('#salesDate').value;
   const all=sales.filter(s=>dkey(s.fecha)===d).sort((a,b)=>a.fecha<b.fecha?1:-1),ok=all.filter(s=>!s.cancelada);
   $('#salesSum').innerHTML=`<div>Ventas<b>${ok.length}</b></div><div>Total vendido<b>${money(ok.reduce((a,s)=>a+s.total,0))}</b></div><div>Piezas vendidas<b>${ok.reduce((a,s)=>a+s.lines.reduce((x,l)=>x+l.q,0),0)}</b></div>${all.length-ok.length?`<div>Canceladas<b>${all.length-ok.length}</b></div>`:''}`;
-  $('#salesList').innerHTML=all.length?all.map(s=>`<button class="sale${s.cancelada?' x':''}" data-f="${s.folio}"><span><b>${s.folio}</b> · ${ftime(s.fecha)}${s.cancelada?' · cancelada':''}</span><span class="t num">${money(s.total)}</span><span class="d">${esc(s.lines.map(l=>l.q+' '+l.n).join(', '))}</span></button>`).join(''):'<p class="empty">No hay ventas registradas este día.</p>'}
+  $('#salesList').innerHTML=all.length?all.map(s=>`<button class="sale${s.cancelada?' x':''}" data-f="${s.folio}"><span><b>${s.folio}</b> · ${ftime(s.fecha)}${s.cancelada?' · cancelada':''}</span><span class="t num">${money(s.total)}</span><span class="d">${esc(s.lines.map(l=>l.q+' '+l.n).join(', '))}</span></button>`).join(''):'<p class="empty">No hay ventas registradas este día.</p>';drawQuotes()}
 $('#salesDate').onchange=drawSales;
 $('#salesList').onclick=e=>{const b=e.target.closest('.sale');if(!b)return;const s=sales.find(x=>x.folio===b.dataset.f);if(s)showTicket(s,false)};
 
@@ -572,27 +625,28 @@ $('#camBack').onclick=stopCam;$('#qCam').onclick=()=>scan(handleCode);$('#eCam')
 let kb='',kt=0;
 document.addEventListener('keydown',e=>{
   if(!$('#pinSheet').hidden){if(/^\d$/.test(e.key))pinKey(e.key);else if(e.key==='Backspace')pinKey('Borrar');return}
-  if(e.key==='Escape'){['#paySheet','#prSheet','#cnSheet','#edSheet','#ucSheet'].forEach(close);return}
+  if(e.key==='Escape'){['#paySheet','#prSheet','#cnSheet','#edSheet','#ucSheet','#qtSheet'].forEach(close);return}
   if(/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)){if(e.key==='Enter'&&e.target.id==='eCb')e.preventDefault();return}
   if(tab!=='sell'||anySheet())return;
   const now=Date.now();if(now-kt>400)kb='';kt=now;
   if(e.key==='Enter'){if(kb.length>=3){e.preventDefault();handleCode(kb)}kb=''}else if(e.key.length===1)kb+=e.key});
 
 /* ---------- Ajustes y respaldo ---------- */
-function drawSet(){$('#cName').value=cfg.name;$('#cFoot').value=cfg.foot;$('#cPrint').value=cfg.print;$('#cAuto').checked=cfg.auto;$('#cFolio').value=cfg.folio;$('#cPin').value=cfg.pin;$('#setErr').hidden=true;
+function drawSet(){$('#cName').value=cfg.name;$('#cFoot').value=cfg.foot;$('#cPrint').value=cfg.print;$('#cAuto').checked=cfg.auto;$('#cFolio').value=cfg.folio;$('#cVig').value=cfg.vig;$('#cPin').value=cfg.pin;$('#setErr').hidden=true;
   $('#bkLast').textContent=cfg.lastBackup?'Último respaldo completo: '+fdate(cfg.lastBackup)+' a las '+ftime(cfg.lastBackup):'Todavía no se ha guardado ningún respaldo.';
   $('#storeInfo').textContent=`Guardado en este aparato: ${products.length} productos, ${sales.length} ventas.`+(DB.db?'':' Atención: este navegador no permite guardar datos; lo que haga se perderá al cerrar.')}
 function readSet(){const pin=$('#cPin').value.trim(),fo=Math.floor(+$('#cFolio').value);
   if(!/^\d{4}$/.test(pin)){$('#setErr').textContent='El PIN debe tener 4 números.';$('#setErr').hidden=false;return false}
+  const vg=Math.floor(+$('#cVig').value);if(!(vg>=1)){$('#setErr').textContent='Los días del presupuesto deben ser 1 o más.';$('#setErr').hidden=false;return false}
   if(!(fo>=1)){$('#setErr').textContent='El folio debe ser 1 o mayor.';$('#setErr').hidden=false;return false}
-  Object.assign(cfg,{name:$('#cName').value.trim()||CFG0.name,foot:$('#cFoot').value.trim(),print:$('#cPrint').value,auto:$('#cAuto').checked,folio:fo,pin});saveCfg();$('#setErr').hidden=true;drawToday();return true}
+  Object.assign(cfg,{name:$('#cName').value.trim()||CFG0.name,foot:$('#cFoot').value.trim(),print:$('#cPrint').value,auto:$('#cAuto').checked,folio:fo,pin,vig:vg});saveCfg();$('#setErr').hidden=true;drawToday();return true}
 $('#setSave').onclick=()=>{if(readSet())toast('Ajustes guardados')};
 $('#cTest').onclick=()=>{if(!readSet())return;printText(ticketText({folio:'PRUEBA',fecha:new Date().toISOString(),lines:[{n:'Producto de prueba con nombre largo',p:12.5,q:2},{n:'Escoba',p:58,q:1}],total:83,paid:100,change:17,metodo:'Efectivo'}))};
 function dl(name,text,type){if(PREVIEW){toast('Los archivos se descargan en la app instalada, no en esta vista de prueba.');return false}
   const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([text],{type}));a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},2000);return true}
 const csv=rows=>'﻿'+rows.map(r=>r.map(v=>{v=String(v??'');return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v}).join(',')).join('\r\n');
 const stamp=()=>dkey(new Date());
-function backupObj(){return {app:'caja-patita',v:1,tipo:'respaldo',fecha:new Date().toISOString(),cfg,products:products.map(({key,...p})=>p),sales,compras,hist}}
+function backupObj(){return {app:'caja-patita',v:1,tipo:'respaldo',fecha:new Date().toISOString(),cfg,products:products.map(({key,...p})=>p),sales,compras,hist,quotes}}
 $('#bkAll').onclick=()=>{cfg.lastBackup=new Date().toISOString();if(dl('respaldo_patita_'+stamp()+'.json',JSON.stringify(backupObj()),'application/json')){saveCfg();drawSet();drawToday();toast('Respaldo guardado en Descargas')}};
 $('#bkVentas').onclick=()=>{const rows=[['Fecha','Hora','Ticket','ID','Producto','Cantidad','Precio','Costo','Total','Utilidad','Método de pago','Estado']];
   sales.forEach(s=>s.lines.forEach(l=>rows.push([fdate(s.fecha),ftime(s.fecha),s.folio,l.id,l.n,l.q,l.p,l.c||0,r2(l.p*l.q),r2((l.p-(l.c||0))*l.q),s.metodo,s.cancelada?'Cancelada':'OK'])));
@@ -603,9 +657,9 @@ $('#bkProd').onclick=()=>{const rows=[['ID','Código de barras','Producto','Cate
 $('#bkCompras').onclick=()=>{const rows=[['Fecha','ID','Producto','Cantidad','Costo','Total']];compras.forEach(c=>rows.push([fdate(c.f),c.id,c.n,c.q,c.c,r2(c.q*c.c)]));
   if(dl('mercancia_patita_'+stamp()+'.csv',csv(rows),'text/csv'))toast('Archivo guardado en Descargas')};
 function readFile(f){return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>{try{const o=JSON.parse(r.result);if(o.app!=='caja-patita'||!Array.isArray(o.products)||!o.products.length)throw 0;res(o)}catch(e){rej()}};r.onerror=rej;r.readAsText(f)})}
-function applyData(o){products=o.products.map(fix);sales=Array.isArray(o.sales)?o.sales:[];compras=o.compras||[];hist=o.hist||[];cfg={...CFG0,...(o.cfg||{})};
+function applyData(o){products=o.products.map(fix);sales=Array.isArray(o.sales)?o.sales:[];compras=o.compras||[];hist=o.hist||[];quotes=Array.isArray(o.quotes)?o.quotes:[];cfg={...CFG0,...(o.cfg||{})};
   if(o.tipo==='inventario')cfg.lastBackup=null;
-  saveProducts();DB.replaceSales(sales);DB.set('compras',compras);DB.set('hist',hist);saveCfg()}
+  saveProducts();DB.replaceSales(sales);DB.set('compras',compras);DB.set('hist',hist);DB.set('quotes',quotes);saveCfg()}
 $('#rsFile').onchange=async e=>{const f=e.target.files[0];e.target.value='';if(!f)return;let o;try{o=await readFile(f)}catch(x){return toast('Ese archivo no es un respaldo de la caja.')}
   confirmAsk('¿Restaurar este respaldo?',`Se reemplaza todo lo que hay en este aparato por el archivo del ${fdate(o.fecha)}: ${o.products.length} productos y ${(o.sales||[]).length} ventas.`,'Sí, restaurar',()=>{applyData(o);cart=[];unlocked=false;start();toast('Respaldo restaurado')})};
 $('#firstFile').onchange=async e=>{const f=e.target.files[0];e.target.value='';if(!f)return;try{applyData(await readFile(f));start()}catch(x){$('#firstErr').textContent='Ese archivo no es el inventario ni un respaldo de la caja.';$('#firstErr').hidden=false}};
@@ -614,7 +668,7 @@ $('#firstFile').onchange=async e=>{const f=e.target.files[0];e.target.value='';i
 function start(){index();const has=products.length>0;$('#welcome').hidden=has;$('#appWrap').hidden=!has;$('#bizName').textContent=cfg.name.replace(/^jarcer[ií]a\s+/i,'');
   if(has){showTab('sell');drawToday()}}
 (async()=>{await DB.open();
-  const p=await DB.get('products');if(p&&p.length){products=p.map(fix);sales=await DB.sales();compras=(await DB.get('compras'))||[];hist=(await DB.get('hist'))||[];cfg={...CFG0,...((await DB.get('cfg'))||{})}}
+  const p=await DB.get('products');if(p&&p.length){products=p.map(fix);sales=await DB.sales();compras=(await DB.get('compras'))||[];hist=(await DB.get('hist'))||[];quotes=(await DB.get('quotes'))||[];cfg={...CFG0,...((await DB.get('cfg'))||{})}}
   else if(PREVIEW){products=SEED.map(fix);saveProducts();saveCfg()}
   $('#previewNote').hidden=!PREVIEW;start();
   try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist()}catch(e){}
