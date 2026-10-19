@@ -527,6 +527,10 @@ function quoteText(q){const L=[],ln='-'.repeat(W);L.push(center(cfg.name),center
   if(q.cliente)wrap('Para: '+q.cliente,W).forEach(x=>L.push(x));L.push(ln);
   q.lines.forEach(l=>{const imp=money(l.p*l.q),w=wrap(l.q+' '+l.n,W-imp.length-1);L.push(lr(w[0],imp));w.slice(1).forEach(x=>L.push('  '+x));if(l.q>1)L.push('  '+l.q+' x '+money(l.p))});
   L.push(ln,lr('TOTAL',money(q.total)),ln,center('Valido hasta el '+fdate(q.vence)),center('Precios sujetos a existencias. No es comprobante de pago.'));return L.join('\n')}
+function quoteMsg(q){const L=['*'+cfg.name+'*','*Presupuesto '+q.folio+'*',fdate(q.fecha)+' '+ftime(q.fecha)];
+  if(q.cliente)L.push('Para: '+q.cliente);L.push('');
+  q.lines.forEach(l=>L.push('• '+l.q+' '+l.n+' = '+money(l.p*l.q)+(l.q>1?' ('+l.q+' x '+money(l.p)+')':'')));
+  L.push('','*TOTAL: '+money(q.total)+'*','','Válido hasta el '+fdate(q.vence)+'.','Precios sujetos a existencias. No es comprobante de pago.');return L.join('\n')}
 function drawQuote(){$('#qtTicket').textContent=quoteText(curQ);$('#qtT').textContent=qSaved?'Presupuesto '+curQ.folio:'Presupuesto'}
 function openQuote(q,saved){curQ=q;qSaved=saved;$('#qtName').value=q.cliente||'';$('#qtToSale').hidden=!saved;$('#qtSave').hidden=saved;
   $('#qtClose').textContent=saved?'Cerrar':'Regresar';drawQuote();open('#qtSheet')}
@@ -539,11 +543,11 @@ function afterSave(msg){toast(msg);if(!$('#qtToSale').hidden)return;cart=[];draw
 $('#qtSave').onclick=()=>{saveQuote();afterSave('Presupuesto '+curQ.folio+' guardado');close('#qtSheet')};
 $('#qtPrint').onclick=()=>{const was=qSaved;saveQuote();if(!was)afterSave('Presupuesto '+curQ.folio+' guardado');printText(quoteText(curQ))};
 $('#qtSend').onclick=async()=>{const was=qSaved;saveQuote();if(!was)afterSave('Presupuesto '+curQ.folio+' guardado');
-  const t='```\n'+quoteText(curQ)+'\n```';
+  const t=quoteMsg(curQ);
   if(PREVIEW)return toast('El envío funciona en la app instalada.');
   if(navigator.share){try{await navigator.share({text:t});return}catch(e){if(e&&e.name==='AbortError')return}}
   location.href='https://wa.me/?text='+encodeURIComponent(t)};
-$('#qtCopy').onclick=()=>{const t=quoteText(curQ);const ok=()=>toast('Texto copiado');
+$('#qtCopy').onclick=()=>{const t=quoteMsg(curQ);const ok=()=>toast('Texto copiado');
   if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(t).then(ok).catch(()=>toast('No se pudo copiar'));else toast('No se pudo copiar')};
 $('#qtClose').onclick=()=>close('#qtSheet');
 $('#qtToSale').onclick=()=>{const q=curQ,go=()=>{const miss=[];cart=[];
