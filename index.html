@@ -198,6 +198,15 @@ video{width:100%;border-radius:12px;background:#000;max-height:50vh}
 .top li .n{font-weight:700;overflow-wrap:anywhere}
 .top li .k{color:var(--muted);font-size:.85rem}
 .sumh{font-size:1.05rem;margin:18px 0 8px}
+.vwsub{margin:-6px 0 0;color:var(--muted);font-size:.95rem}
+.vgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px}
+.vgrid div{background:var(--bg);border-radius:12px;padding:10px 14px;font-size:.85rem;color:var(--muted);min-width:0}
+.vgrid b{display:block;font-family:var(--f-display);font-size:1.45rem;color:var(--ink);overflow-wrap:anywhere}
+.vgrid .neg b{color:var(--danger)}
+.vinfo{display:grid;grid-template-columns:auto minmax(0,1fr);gap:6px 14px;margin:0;font-size:1rem}
+.vinfo dt{color:var(--muted)}
+.vinfo dd{margin:0;font-weight:700;overflow-wrap:anywhere}
+.item .pr small{display:block;font-size:.8rem;font-weight:400;color:var(--muted)}
 .od{display:grid;grid-template-columns:auto minmax(0,1fr) 5.5em;gap:10px;align-items:center;padding:10px 12px;border-radius:10px;border:2px solid var(--line);flex:none}
 .od input[type=checkbox]{width:26px;height:26px}
 .od .n{font-weight:700;overflow-wrap:anywhere}
@@ -317,6 +326,22 @@ video{width:100%;border-radius:12px;background:#000;max-height:50vh}
     <p class="small" id="storeInfo"></p>
   </section>
 </main>
+</div>
+
+<div class="sheet" id="vwSheet" hidden role="dialog" aria-modal="true" aria-labelledby="vwT">
+  <div class="card" style="width:min(640px,100%)">
+    <h3 id="vwT"></h3>
+    <p class="vwsub" id="vwSub"></p>
+    <div class="vgrid num" id="vwGrid"></div>
+    <dl class="vinfo" id="vwInfo"></dl>
+    <div class="box">
+      <h4>Llegó mercancía</h4>
+      <div class="small" id="vwNow"></div>
+      <div class="row"><input id="vwQ" type="number" inputmode="decimal" min="0" step="any" placeholder="¿Cuánto llegó?" aria-label="Cantidad que llegó"><button class="big" id="vwOk" style="font-size:1.1rem" disabled>Sumar</button></div>
+    </div>
+    <ul class="hist" id="vwHist"></ul>
+    <div class="row"><button class="ghost" id="vwClose">Cerrar</button><button class="btn2" id="vwEdit">Editar producto</button></div>
+  </div>
 </div>
 
 <div class="sheet" id="edSheet" hidden role="dialog" aria-modal="true" aria-labelledby="edT">
@@ -543,9 +568,9 @@ function topCats(){return Object.entries(products.reduce((a,p)=>(a[p.cat]=(a[p.c
 function drawChips(){$('#chips').innerHTML=['Todos',...topCats().slice(0,14)].map(c=>`<button class="chip" aria-pressed="${(c==='Todos'?'':c)===cat}" data-c="${esc(c==='Todos'?'':c)}">${esc(c)}</button>`).join('')}
 $('#chips').onclick=e=>{const b=e.target.closest('.chip');if(!b)return;cat=b.dataset.c;drawChips();drawResults()};
 function stockPill(p){if(!p.a)return '<span class="pill out">ya no se vende</span>';if(!p.p)return '<span class="pill np">sin precio</span>';if(p.s<=0)return '<span class="pill out">sin existencia</span>';if(!p.u&&p.s===1)return '<span class="pill low">última pieza</span>';if(p.s<=p.m)return '<span class="pill low">quedan '+qtyLabel(p.s,p.u)+'</span>';return ''}
-function itemHtml(p){return `<button class="item" data-id="${esc(p.id)}"><span class="n">${esc(p.n)}${stockPill(p)}</span><span class="meta">${esc([p.marca,p.pres,p.cat].filter(Boolean).join(' · '))} · ${qtyLabel(p.s,p.u)} en tienda${p.cb?' · con código':''}</span><span class="pr num">${p.p?money(p.p)+(p.u?' /'+p.u:''):'—'}</span></button>`}
+function itemHtml(p,cost){return `<button class="item" data-id="${esc(p.id)}"><span class="n">${esc(p.n)}${stockPill(p)}</span><span class="meta">${esc([p.marca,p.pres,p.cat].filter(Boolean).join(' · '))} · ${qtyLabel(p.s,p.u)} en tienda${p.cb?' · con código':''}</span><span class="pr num">${p.p?money(p.p)+(p.u?' /'+p.u:''):'—'}${cost?'<small>'+(p.c?'costo '+money(p.c):'sin costo')+'</small>':''}</span></button>`}
 function filterList(list,q,pred){const w=norm(q.trim()).split(/\s+/).filter(Boolean);return list.filter(p=>pred(p)&&w.every(x=>p.key.includes(x)))}
-function listHtml(list,q){const t=list.length;return t?list.slice(0,60).map(itemHtml).join('')+(t>60?`<p class="empty">Hay ${t} productos. Escriba más letras para encontrarlo más rápido.</p>`:''):`<p class="empty">${q.trim()?'No encontré “'+esc(q)+'”. Pruebe con otra palabra.':'No hay productos en esta lista.'}</p>`}
+function listHtml(list,q,cost){const t=list.length;return t?list.slice(0,60).map(p=>itemHtml(p,cost)).join('')+(t>60?`<p class="empty">Hay ${t} productos. Escriba más letras para encontrarlo más rápido.</p>`:''):`<p class="empty">${q.trim()?'No encontré “'+esc(q)+'”. Pruebe con otra palabra.':'No hay productos en esta lista.'}</p>`}
 function drawResults(){$('#results').innerHTML=listHtml(filterList(active(),$('#q').value,p=>!cat||p.cat===cat),$('#q').value)}
 $('#q').oninput=drawResults;
 $('#qClear').onclick=()=>{$('#q').value='';drawResults();$('#q').focus()};
@@ -740,21 +765,40 @@ let pf='';
 const PF=[['','Todos',()=>true],['np','Sin precio',p=>p.a&&!p.p],['nc','Sin costo',p=>p.a&&!p.c],['ncb','Sin código de barras',p=>p.a&&!p.cb],['low','Quedan pocos',p=>p.a&&p.s>0&&p.s<=p.m],['out','Sin existencia',p=>p.a&&p.s<=0],['off','Ya no se venden',p=>!p.a]];
 function drawProd(){
   $('#pchips').innerHTML=PF.map(([k,l,f])=>`<button class="chip" data-k="${k}" aria-pressed="${pf===k}">${l} <span class="num">(${products.filter(f).length})</span></button>`).join('');
-  const f=PF.find(x=>x[0]===pf)[2];$('#presults').innerHTML=listHtml(filterList(products,$('#pq').value,f),$('#pq').value);
+  const f=PF.find(x=>x[0]===pf)[2];$('#presults').innerHTML=listHtml(filterList(products,$('#pq').value,f),$('#pq').value,true);
   $('#pCount').textContent='· '+products.length+' en total';
   $('#catList').innerHTML=topCats().map(c=>`<option value="${esc(c)}">`).join('')}
 $('#pchips').onclick=e=>{const b=e.target.closest('.chip');if(!b)return;pf=b.dataset.k;drawProd()};
-$('#pq').oninput=drawProd;$('#pForm').onsubmit=e=>{e.preventDefault();const p=findCode($('#pq').value);if(p){$('#pq').value='';edit(p)}};
+$('#pq').oninput=drawProd;$('#pForm').onsubmit=e=>{e.preventDefault();const p=findCode($('#pq').value);if(p){$('#pq').value='';view(p)}};
 $('#pqClear').onclick=()=>{$('#pq').value='';drawProd();$('#pq').focus()};
-$('#presults').onclick=e=>{const b=e.target.closest('.item');if(b)edit(byId[b.dataset.id.toLowerCase()])};
+$('#presults').onclick=e=>{const b=e.target.closest('.item');if(b)view(byId[b.dataset.id.toLowerCase()])};
 $('#newProd').onclick=()=>edit(null);
 let editing=null;
 function nextId(){const n=Math.max(0,...products.map(p=>+(p.id.match(/(\d+)$/)||[0,0])[1]));return 'LIM'+String(n+1).padStart(4,'0')}
 function logPrice(p,a,b){if(a===b)return;hist.unshift({f:new Date().toISOString(),id:p.id,n:p.n,a,b});hist=hist.slice(0,2000);DB.set('hist',hist)}
+/* ---------- Ficha de consulta (solo ver) ---------- */
+let viewing=null;
+function view(p){viewing=p;const g=p.p-p.c,neg=p.c&&p.p&&g<0;
+  $('#vwT').textContent=p.n;$('#vwSub').textContent=[p.id,p.marca,p.pres,p.cat].filter(Boolean).join(' · ');
+  $('#vwGrid').innerHTML=`<div>Precio de venta<b>${p.p?money(p.p)+(p.u?'/'+p.u:''):'Sin precio'}</b></div><div>Costo<b>${p.c?money(p.c):'Sin costo'}</b></div>`+
+    (p.p&&p.c?`<div class="${neg?'neg':''}">Ganancia por ${p.u?UN[p.u][0]:'pieza'}<b>${money(g)}</b></div><div class="${neg?'neg':''}">Margen<b>${Math.round(g/p.p*100)}%</b></div>`:'')+
+    `<div>En tienda<b>${qtyLabel(p.s,p.u)}</b></div>`;
+  $('#vwInfo').innerHTML=`<dt>Se vende por</dt><dd>${{'':'Pieza',m:'Metro',kg:'Kilo'}[p.u||'']}</dd><dt>Avisar cuando queden</dt><dd>${qtyLabel(p.m,p.u)}</dd><dt>Código de barras</dt><dd>${p.cb?esc(p.cb):'Sin código'}</dd><dt>Estado</dt><dd>${p.a?(p.s<=0?'Sin existencia':p.s<=p.m?'Reabastecer':'Bien surtido'):'Ya no se vende'}</dd>`;
+  $('#vwQ').value='';$('#vwOk').disabled=true;$('#vwNow').textContent=`Hay ${qtyLabel(p.s,p.u)} en tienda. Escriba cuánto llegó y toque Sumar.`;
+  const h=hist.filter(x=>x.id===p.id).slice(0,3);
+  $('#vwHist').innerHTML=h.length?h.map(x=>`<li>${fdate(x.f)}: precio de ${x.a?money(x.a):'sin precio'} a ${money(x.b)}</li>`).join(''):'';
+  open('#vwSheet')}
+$('#vwQ').oninput=()=>{$('#vwOk').disabled=!(+$('#vwQ').value>0)};
+$('#vwOk').onclick=()=>{const p=viewing;if(!p)return;const q=p.u?r3(+$('#vwQ').value):Math.floor(+$('#vwQ').value);if(!(q>0))return;
+  p.s=r3(p.s+q);compras.push({f:new Date().toISOString(),id:p.id,n:p.n,q,c:p.c});DB.set('compras',compras);saveProducts();
+  toast(`Se sumaron ${qtyLabel(q,p.u)}${p.u?'':q===1?' pieza':' piezas'} de ${p.n}`);view(p);drawProd()};
+$('#vwClose').onclick=()=>close('#vwSheet');
+$('#vwEdit').onclick=()=>{const p=viewing;close('#vwSheet');edit(p)};
+
 function edit(p,cb){editing=p;const v=p||{n:'',p:'',c:'',cat:'',marca:'',pres:'1 pz',m:1,cb:cb||'',s:0,u:'',a:1};
   $('#edT').textContent=p?'Cambiar producto · '+p.id:'Nuevo producto · '+nextId();
   $('#eN').value=v.n;$('#eP').value=v.p||'';$('#eC').value=v.c||'';$('#eCat').value=v.cat;$('#eMarca').value=v.marca;$('#ePres').value=v.pres;$('#eM').value=v.m;$('#eCb').value=v.cb;$('#eS').value=v.s;$('#eU').value=v.u||'';$('#eA').checked=!!v.a;
-  $('#restock').hidden=!p;$('#rsQ').value='';$('#rsOk').disabled=true;$('#eErr').hidden=true;
+  $('#restock').hidden=true;$('#rsQ').value='';$('#rsOk').disabled=true;$('#eErr').hidden=true;
   if(p)$('#rsNow').textContent=`Hay ${qtyLabel(p.s,p.u)} en tienda.`;
   const h=p?hist.filter(x=>x.id===p.id).slice(0,3):[];
   $('#eHist').innerHTML=h.map(x=>`<li>${fdate(x.f)}: precio de ${x.a?money(x.a):'sin precio'} a ${money(x.b)}</li>`).join('');
@@ -798,7 +842,7 @@ $('#camBack').onclick=stopCam;$('#qCam').onclick=()=>scan(handleCode);$('#eCam')
 let kb='',kt=0;
 document.addEventListener('keydown',e=>{
   if(!$('#pinSheet').hidden){if(/^\d$/.test(e.key))pinKey(e.key);else if(e.key==='Backspace')pinKey('Borrar');return}
-  if(e.key==='Escape'){['#paySheet','#prSheet','#cnSheet','#edSheet','#ucSheet','#qtSheet','#qlSheet','#qySheet','#dsSheet','#odSheet'].forEach(close);return}
+  if(e.key==='Escape'){['#paySheet','#prSheet','#cnSheet','#edSheet','#ucSheet','#qtSheet','#qlSheet','#qySheet','#dsSheet','#odSheet','#vwSheet'].forEach(close);return}
   if(/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)){if(e.key==='Enter'&&e.target.id==='eCb')e.preventDefault();return}
   if((tab!=='sell'&&tab!=='quote')||anySheet())return;
   const now=Date.now();if(now-kt>400)kb='';kt=now;
