@@ -287,7 +287,7 @@ video{width:100%;border-radius:12px;background:#000;max-height:50vh}
 <main id="v-prod" hidden style="padding-bottom:24px">
   <section class="panel">
     <div class="prodhead"><h2 style="margin:0">Productos <span class="small num" id="pCount"></span></h2><div class="btns"><button class="btn2" id="orderBtn">Lista de pedido</button><button class="add" id="newProd">+ Nuevo producto</button></div></div>
-    <form class="search" id="pForm"><input id="pq" type="search" autocomplete="off" placeholder="Buscar producto…" aria-label="Buscar producto"><button type="button" class="clear" id="pqClear">Borrar</button></form>
+    <form class="search" id="pForm"><input id="pq" type="search" autocomplete="off" placeholder="Buscar o escanear producto…" aria-label="Buscar producto"><button type="button" class="cam" id="pCam" hidden>Cámara</button><button type="button" class="clear" id="pqClear">Borrar</button></form>
     <div class="chips" id="pchips" role="group" aria-label="Filtro" style="margin-top:12px"></div>
     <div class="results plist" id="presults"></div>
   </section>
@@ -482,6 +482,7 @@ video{width:100%;border-radius:12px;background:#000;max-height:50vh}
     <p style="margin:0">El código <b class="num" id="ucCode"></b> todavía no está registrado. ¿Qué producto es?</p>
     <div class="search"><input id="ucQ" type="search" autocomplete="off" placeholder="Escriba el nombre" aria-label="Buscar producto"></div>
     <div class="results" id="ucRes" style="max-height:40vh"></div>
+    <button class="add" id="ucNew" hidden>Es un producto nuevo: darlo de alta</button>
     <button class="ghost" id="ucBack">Regresar</button>
   </div>
 </div>
@@ -769,7 +770,8 @@ function drawProd(){
   $('#pCount').textContent='· '+products.length+' en total';
   $('#catList').innerHTML=topCats().map(c=>`<option value="${esc(c)}">`).join('')}
 $('#pchips').onclick=e=>{const b=e.target.closest('.chip');if(!b)return;pf=b.dataset.k;drawProd()};
-$('#pq').oninput=drawProd;$('#pForm').onsubmit=e=>{e.preventDefault();const p=findCode($('#pq').value);if(p){$('#pq').value='';view(p)}};
+$('#pq').oninput=drawProd;$('#pForm').onsubmit=e=>{e.preventDefault();const v=$('#pq').value.trim();if(v&&(findCode(v)||looksCode(v)))prodCode(v)};
+function prodCode(v){v=String(v).trim();const p=findCode(v);if(p){$('#pq').value='';drawProd();view(p);return}if(looksCode(v))return unknownCode(v,'prod');$('#pq').value=v;drawProd()}
 $('#pqClear').onclick=()=>{$('#pq').value='';drawProd();$('#pq').focus()};
 $('#presults').onclick=e=>{const b=e.target.closest('.item');if(b)view(byId[b.dataset.id.toLowerCase()])};
 $('#newProd').onclick=()=>edit(null);
@@ -824,29 +826,30 @@ $('#edSave').onclick=()=>{const err=t=>{$('#eErr').textContent=t;$('#eErr').hidd
   saveProducts();close('#edSheet');toast(editing?'Cambios guardados':'Producto agregado');drawProd()};
 
 /* ---------- Código nuevo y cámara ---------- */
-let ucCode='';
-function unknownCode(v){ucCode=v;$('#ucCode').textContent=v;$('#ucQ').value='';drawUc();open('#ucSheet');setTimeout(()=>$('#ucQ').focus(),50)}
-function drawUc(){const q=$('#ucQ').value;$('#ucRes').innerHTML=q.trim()?listHtml(filterList(active(),q,()=>true),q):'<p class="empty">Escriba el nombre del producto para elegirlo.</p>'}
-$('#ucQ').oninput=drawUc;$('#ucBack').onclick=()=>{close('#ucSheet');$('#q').value=''};
-$('#ucRes').onclick=e=>{const b=e.target.closest('.item');if(!b)return;const p=byId[b.dataset.id.toLowerCase()];p.cb=ucCode;saveProducts();close('#ucSheet');$('#q').value='';toast('Código guardado para '+p.n);add(p);drawResults()};
+let ucCode='',ucCtx='sell';
+function unknownCode(v,ctx){ucCode=v;ucCtx=ctx||'sell';$('#ucCode').textContent=v;$('#ucQ').value='';$('#ucNew').hidden=ucCtx!=='prod';$('#ucT').textContent=ucCtx==='prod'?'Código no registrado':'Código nuevo';drawUc();open('#ucSheet');setTimeout(()=>$('#ucQ').focus(),50)}
+function drawUc(){const q=$('#ucQ').value;$('#ucRes').innerHTML=q.trim()?listHtml(filterList(ucCtx==='prod'?products:active(),q,()=>true),q):'<p class="empty">Escriba el nombre del producto para elegirlo.</p>'}
+$('#ucQ').oninput=drawUc;$('#ucBack').onclick=()=>{close('#ucSheet');$(ucCtx==='prod'?'#pq':'#q').value=''};
+$('#ucNew').onclick=()=>{close('#ucSheet');$('#pq').value='';edit(null,ucCode)};
+$('#ucRes').onclick=e=>{const b=e.target.closest('.item');if(!b)return;const p=byId[b.dataset.id.toLowerCase()];p.cb=ucCode;saveProducts();close('#ucSheet');if(ucCtx==='prod'){$('#pq').value='';toast('Código guardado para '+p.n);drawProd();view(p);return}$('#q').value='';toast('Código guardado para '+p.n);add(p);drawResults()};
 let camStream=null,camOn=false;
 const camOK='BarcodeDetector' in window&&navigator.mediaDevices&&!PREVIEW;
-$('#qCam').hidden=!camOK;$('#eCam').hidden=!camOK;
+$('#qCam').hidden=!camOK;$('#eCam').hidden=!camOK;$('#pCam').hidden=!camOK;
 async function scan(cb){try{camStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});const v=$('#camV');v.srcObject=camStream;open('#camSheet');await v.play();
     const det=new BarcodeDetector({formats:['ean_13','ean_8','upc_a','upc_e','code_128','code_39','itf']});camOn=true;
     const loop=async()=>{if(!camOn)return;try{const r=await det.detect(v);if(r.length){stopCam();cb(r[0].rawValue);return}}catch(e){}setTimeout(loop,250)};loop()}
   catch(e){stopCam();toast('No se pudo usar la cámara. Revise el permiso de cámara.')}}
 function stopCam(){camOn=false;camStream&&camStream.getTracks().forEach(t=>t.stop());camStream=null;close('#camSheet')}
-$('#camBack').onclick=stopCam;$('#qCam').onclick=()=>scan(handleCode);$('#eCam').onclick=()=>scan(v=>{$('#eCb').value=v});
+$('#camBack').onclick=stopCam;$('#pCam').onclick=()=>scan(prodCode);$('#qCam').onclick=()=>scan(handleCode);$('#eCam').onclick=()=>scan(v=>{$('#eCb').value=v});
 // Lector de códigos tipo teclado: funciona aunque no esté seleccionado el buscador
 let kb='',kt=0;
 document.addEventListener('keydown',e=>{
   if(!$('#pinSheet').hidden){if(/^\d$/.test(e.key))pinKey(e.key);else if(e.key==='Backspace')pinKey('Borrar');return}
   if(e.key==='Escape'){['#paySheet','#prSheet','#cnSheet','#edSheet','#ucSheet','#qtSheet','#qlSheet','#qySheet','#dsSheet','#odSheet','#vwSheet'].forEach(close);return}
   if(/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)){if(e.key==='Enter'&&e.target.id==='eCb')e.preventDefault();return}
-  if((tab!=='sell'&&tab!=='quote')||anySheet())return;
+  if((tab!=='sell'&&tab!=='quote'&&tab!=='prod')||anySheet())return;
   const now=Date.now();if(now-kt>400)kb='';kt=now;
-  if(e.key==='Enter'){if(kb.length>=3){e.preventDefault();handleCode(kb)}kb=''}else if(e.key.length===1)kb+=e.key});
+  if(e.key==='Enter'){if(kb.length>=3){e.preventDefault();tab==='prod'?prodCode(kb):handleCode(kb)}kb=''}else if(e.key.length===1)kb+=e.key});
 
 /* ---------- Ajustes y respaldo ---------- */
 function drawFs(){$('#fsChips').innerHTML=FS.map(([v,l])=>`<button class="chip" data-v="${v}" aria-pressed="${(cfg.fs||1)===v}" style="font-size:${v}rem">${l}</button>`).join('')}
